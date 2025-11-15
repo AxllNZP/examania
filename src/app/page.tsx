@@ -1,65 +1,115 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useForm } from "react-hook-form";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+
+export default function LoginPage() {
+  const router = useRouter();
+  const { register, handleSubmit, formState: { errors } } = useForm();
+  const [serverError, setServerError] = useState("");
+  const [token, setToken] = useState("");
+
+  useEffect(() => {
+    if (token) {
+      document.cookie = `token=${token}; path=/;`;
+      router.push("/dashboard");
+    }
+  }, [token, router]);
+
+  const onSubmit = async (data) => {
+    setServerError("");
+
+    const res = await fetch("/api/login", {
+      method: "POST",
+      body: JSON.stringify(data)
+    });
+
+    if (res.status === 401) {
+      setServerError("El usuario o la contraseña son incorrectos");
+      return;
+    }
+
+    const { token: responseToken } = await res.json();
+    setToken(responseToken);
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <div style={{
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      height: "100vh",
+      background: "#f0f2f5"
+    }}>
+      <div style={{
+        width: "350px",
+        padding: "30px",
+        borderRadius: "15px",
+        background: "#008e98ff",
+        boxShadow: "0 4px 10px rgba(0,0,0,0.1)"
+      }}>
+        
+        <h2 style={{ textAlign: "center", marginBottom: "10px" }}>Bienvenido</h2>
+        <p style={{ textAlign: "center", marginBottom: "20px", fontSize: "13px" }}>
+          Tu ayudante personal
+        </p>
+
+        <form onSubmit={handleSubmit(onSubmit)}>
+
+          <label>Correo electrónico</label>
+          <input
+            {...register("email", { required: "El correo es requerido" })}
+            style={inputStyle}
+            type="email"
+            placeholder="Ingresa tu correo"
+          />
+          {errors.email && <p style={errorStyle}>{errors.email.message}</p>}
+
+          <label>Contraseña</label>
+          <input
+            {...register("password", { required: "La contraseña es requerida" })}
+            style={inputStyle}
+            type="password"
+            placeholder="Ingresa tu contraseña"
+          />
+          {errors.password && <p style={errorStyle}>{errors.password.message}</p>}
+
+          {serverError && <p style={errorStyle}>{serverError}</p>}
+
+          <button type="submit" style={buttonStyle}>
+            Iniciar Sesión
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
+
+const inputStyle = {
+  width: "100%",
+  padding: "10px",
+  marginTop: "5px",
+  marginBottom: "10px",
+  borderRadius: "8px",
+  border: "1px solid #ccc",
+  outline: "none"
+};
+
+const buttonStyle = {
+  width: "100%",
+  padding: "12px",
+  borderRadius: "8px",
+  background: "#2aa7e2",
+  border: "none",
+  color: "#fff",
+  fontWeight: "bold",
+  cursor: "pointer",
+  marginTop: "15px"
+};
+
+const errorStyle = {
+  color: "red",
+  fontSize: "12px",
+  marginBottom: "10px"
+};
