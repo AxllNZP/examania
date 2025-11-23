@@ -1,38 +1,147 @@
+// middleware.js (en la raíz del proyecto)
+
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
+import { verifyAccessToken, isTokenExpiringSoon } from "./lib/auth";
 
-cookies().set("token", token, {
-  httpOnly: true,
-  sameSite: "strict",
-  secure: true,
-  path: "/"
-});
+export async function middleware(req) {
+  const { pathname } = req.nextUrl;
+  
+  // Obtener tokens de las cookies
+  const accessToken = req.cookies.get("accessToken")?.value;
+  const refreshToken = req.cookies.get("refreshToken")?.value;
 
+  // Rutas públicas (accesibles sin estar logueado)
+  const publicRoutes = ["/login", "/register"];
+  const isPublicRoute = publicRoutes.includes(pathname);
 
-export function middleware(req) {
-  const token = req.cookies.get("token")?.value;
+  // Rutas protegidas (requieren autenticación)
+  const protectedRoutes = ["/dashboard", "/inicio", "/perfil"];
+  const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route));
 
-  const publicRoutes = ["/login"]; // rutas accesibles sin estar logueado
-  const isPublicRoute = publicRoutes.includes(req.nextUrl.pathname);
+  // ========================================
+  // CASO 1: USUARIO NO AUTENTICADO
+  // ========================================
+  
+  if (!accessToken && !refreshToken) {
+    // No tiene ningún token
+    
+    if (isProtectedRoute) {
+      // Intenta acceder a ruta protegida → Redirigir a login
+      console.log("❌ Sin tokens, redirigiendo a /login");
+      return NextResponse.redirect(new URL("/login", req.url));
+    }
+    
+    // Ruta pública → Permitir acceso
+    return NextResponse.next();
+  }
 
-  // Caso 1: usuario NO logueado intenta acceder a rutas protegidas
-  if (!token && !isPublicRoute) {
+  // ========================================
+  // CASO 2: VERIFICAR ACCESS TOKEN
+  // ========================================
+  
+  let isAuthenticated = false;
+  
+  if (accessToken) {
+    const decoded = verifyAccessToken(accessToken);
+    
+    if (decoded) {
+      // Access token válido
+      isAuthenticated = true;
+      
+      // ========================================
+      // RENOVACIÓN AUTOMÁTICA DE TOKEN
+      // ========================================
+      
+      // Si el token está por expirar (menos de 5 min)
+      if (isTokenExpiringSoon(accessToken)) {
+        console.log("⚠️ Access token expirando pronto, renovando...");
+        
+        try {
+          // Llamar a la API de refresh
+          const refreshResponse = await fetch(new URL("/api/auth/refresh", req.url), {
+            method: "POST",
+            headers: {
+              Cookie: `refreshToken=${refreshToken}`
+            }
+          });
+          
+          if (refreshResponse.ok) {
+            console.log("✅ Token renovado exitosamente");
+            
+            // Obtener el nuevo token de la respuesta
+            const cookies = refreshResponse.headers.get("set-cookie");
+            
+            // Crear respuesta con el nuevo token
+            const response = NextResponse.next();
+            
+            if (cookies) {
+              // Copiar las cookies de la respuesta del refresh
+              response.headers.set("set-cookie", cookies);
+            }
+            
+            return response;
+          } else {
+            console.log("❌ Error al renovar token");
+            // Si falla, continuar con el token actual
+          }
+        } catch (error) {
+          console.error("❌ Error en renovación automática:", error);
+        }
+      }
+    } else {
+      // Access token inválido/expirado
+      console.log("⚠️ Access token inválido");
+      
+      // Si tiene refresh token, intentar renovar
+      if (refreshToken) {
+        console.log("🔄 Intentando renovar con refresh token...");
+        isAuthenticated = true; // Asumimos que tiene refresh válido
+      }
+    }
+  } else if (refreshToken) {
+    // No tiene access token pero sí refresh token
+    console.log("🔄 Solo tiene refresh token, necesita renovar");
+    isAuthenticated = true; // El refresh lo manejará la app
+  }
+
+  // ========================================
+  // CASO 3: USUARIO AUTENTICADO EN RUTA PÚBLICA
+  // ========================================
+  
+  if (isAuthenticated && isPublicRoute) {
+    // Ya está logueado, no puede ver login/register
+    console.log("✅ Usuario autenticado, redirigiendo a /dashboard");
+    return NextResponse.redirect(new URL("/dashboard", req.url));
+  }
+
+  // ========================================
+  // CASO 4: USUARIO NO AUTENTICADO EN RUTA PROTEGIDA
+  // ========================================
+  
+  if (!isAuthenticated && isProtectedRoute) {
+    console.log("❌ No autenticado, redirigiendo a /login");
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // Caso 2: usuario logueado intenta entrar a /login
-  if (token && isPublicRoute) {
-    return NextResponse.redirect(new URL("www.google.com", req.url));
+  // ========================================
+  // CASO 5: RUTA RAÍZ "/"
+  // ========================================
+  
+  if (pathname === "/") {
+    if (isAuthenticated) {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    } else {
+      return NextResponse.redirect(new URL("/login", req.url));
+    }
   }
 
+  // Permitir el acceso
   return NextResponse.next();
 }
 
-// Qué rutas vigilar
+// Configurar qué rutas vigilar
 export const config = {
   matcher: [
-    "/((?!_next|static|favicon.ico|images).*)"
+    "/((?!api|_next/static|_next/image|favicon.ico|images|.*\\..*|_next).*)",
   ],
 };
-
-cookies().delete("token");
