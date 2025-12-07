@@ -1,32 +1,35 @@
 // src/app/api/auth/login/route.js
 
-import { findUserByEmail } from "../../../../../lib/users";
-import { generateAccessToken, generateRefreshToken } from "../../../../../lib/auth";
-import { cookies } from "next/headers";
+import { loginSchema } from '../../../../../lib/validation';
+import { findUserByEmail } from '../../../../../lib/users';
+import { generateAccessToken, generateRefreshToken } from '../../../../../lib/auth';
+import { cookies } from 'next/headers';
 
 export async function POST(req) {
   try {
-    const { email, password } = await req.json();
+    const body = await req.json();
 
-    // Validar que se envíen los campos
-    if (!email || !email.trim()) {
+    // === Validación servidor usando Zod ===
+    const parsed = loginSchema.safeParse(body);
+    if (!parsed.success) {
+      // Enviamos errores estructurados que el cliente puede usar
+      const flattened = parsed.error.flatten();
       return new Response(
-        JSON.stringify({ error: "El usuario es requerido" }),
+        JSON.stringify({
+          error: "Validación fallida",
+          errors: flattened // contiene .fieldErrors
+        }),
         { status: 400 }
       );
     }
 
-    if (!password || !password.trim()) {
-      return new Response(
-        JSON.stringify({ error: "La contraseña es requerida" }),
-        { status: 400 }
-      );
-    }
+    const { email, password } = parsed.data;
 
     // Buscar usuario
     const user = findUserByEmail(email);
 
     // Si no existe el usuario o la contraseña es incorrecta
+    // (En producción compara hashes con bcrypt)
     if (!user || user.password !== password) {
       return new Response(
         JSON.stringify({ error: "El usuario o Contraseña son Incorrectos" }),
@@ -37,7 +40,6 @@ export async function POST(req) {
     // ========================================
     // GENERAR TOKENS (Access + Refresh)
     // ========================================
-    
     const payload = {
       id: user.id,
       email: user.email,
@@ -55,7 +57,6 @@ export async function POST(req) {
     // ========================================
     // GUARDAR TOKENS EN COOKIES
     // ========================================
-    
     const cookieStore = await cookies();
     
     // Cookie del Access Token

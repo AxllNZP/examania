@@ -5,6 +5,10 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import '../globals.css';
 
+// Importa el esquema de validación (Zod)
+// Ajusta la ruta si tu validation.js está en otra carpeta
+import { loginSchema } from '../../../lib/validation';
+
 export default function LoginPage() {
   const router = useRouter();
   
@@ -21,30 +25,7 @@ export default function LoginPage() {
   
   const [isLoading, setIsLoading] = useState(false);
 
-  // Validar campos vacíos
-  const validateForm = () => {
-    const newErrors = {
-      email: '',
-      password: '',
-      general: ''
-    };
-    let isValid = true;
-
-    if (!formData.email.trim()) {
-      newErrors.email = 'El usuario es requerido';
-      isValid = false;
-    }
-
-    if (!formData.password.trim()) {
-      newErrors.password = 'La contraseña es requerida';
-      isValid = false;
-    }
-
-    setErrors(newErrors);
-    return isValid;
-  };
-
-  // Manejar cambios en los inputs
+  // Limpiar error de un campo cuando escribes
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -52,8 +33,7 @@ export default function LoginPage() {
       [name]: value
     }));
     
-    // Limpiar error del campo al escribir
-    if (errors[name]) {
+    if (errors[name] || errors.general) {
       setErrors(prev => ({
         ...prev,
         [name]: '',
@@ -69,9 +49,22 @@ export default function LoginPage() {
     // Limpiar errores previos
     setErrors({ email: '', password: '', general: '' });
 
-    // Validar campos
-    if (!validateForm()) {
-      return;
+    // === Validación cliente usando Zod ===
+    try {
+      const parsed = loginSchema.safeParse(formData);
+      if (!parsed.success) {
+        // parsed.error.flatten() da estructura { formErrors, fieldErrors, ... }
+        const fieldErrors = parsed.error.flatten().fieldErrors || {};
+        setErrors({
+          email: (fieldErrors.email && fieldErrors.email[0]) || '',
+          password: (fieldErrors.password && fieldErrors.password[0]) || '',
+          general: ''
+        });
+        return;
+      }
+    } catch (zErr) {
+      // improbable, pero prevenir crash
+      console.error("Error validación cliente:", zErr);
     }
 
     setIsLoading(true);
@@ -87,19 +80,43 @@ export default function LoginPage() {
 
       const data = await response.json();
 
-      if (response.ok) {
-        // Login exitoso - redirigir a dashboard
-        router.push('/dashboard');
-        router.refresh();
-      } else {
-        // Credenciales incorrectas
+      if (response.status === 400) {
+        // Validación del servidor: puede devolver fieldErrors
+        // Esperamos { errors: { fieldErrors: { email: [...], password: [...] } } }
+        const fieldErrors = data?.errors?.fieldErrors || data?.errors || {};
+        setErrors({
+          email: (fieldErrors.email && fieldErrors.email[0]) || '',
+          password: (fieldErrors.password && fieldErrors.password[0]) || '',
+          general: data?.error || data?.message || ''
+        });
+        return;
+      }
+
+      if (response.status === 401) {
+        // Credenciales incorrectas -> mensaje genérico exacto requerido
         setErrors({
           email: '',
           password: '',
-          general: data.error || 'El usuario o Contraseña son Incorrectos'
+          general: data?.error || 'El usuario o Contraseña son Incorrectos'
         });
+        return;
       }
-    } catch {
+
+      if (!response.ok) {
+        setErrors({
+          email: '',
+          password: '',
+          general: data?.error || 'Error al conectar con el servidor'
+        });
+        return;
+      }
+
+      // Login exitoso: backend ya guardó cookies (accessToken & refreshToken)
+      // Puedes usar router.push para redirigir al Inicio ("/" o "/dashboard")
+      router.push('/dashboard');
+      router.refresh();
+    } catch (err) {
+      console.error("Fetch error:", err);
       setErrors({
         email: '',
         password: '',
