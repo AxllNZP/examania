@@ -33,7 +33,6 @@ export async function POST(req) {
       );
     }
 
-    // Validar formato de email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       return new Response(
@@ -57,48 +56,55 @@ export async function POST(req) {
     }
 
     // ========================================
-    // PASO 2: VERIFICAR QUE EL EMAIL NO EXISTA
+    // PASO 2: VERIFICAR EN BASE DE DATOS
     // ========================================
     
-    const existingUser = findUserByEmail(email);
+    const existingUser = await findUserByEmail(email);
     
     if (existingUser) {
       return new Response(
         JSON.stringify({ error: "Este email ya está registrado" }),
-        { status: 409 } // 409 = Conflict
+        { status: 409 }
       );
     }
 
     // ========================================
-    // PASO 3: CREAR NUEVO USUARIO
+    // PASO 3: CREAR USUARIO EN BASE DE DATOS
     // ========================================
     
-    const newUser = addUser({
+    const newUser = await addUser({
       name: name.trim(),
       email: email.trim().toLowerCase(),
-      password: password // En producción: hashear con bcrypt
+      password: password, // En producción: hashear con bcrypt
+      role: 'TEACHER' // Default: profesor
     });
+
+    if (!newUser) {
+      return new Response(
+        JSON.stringify({ error: "Error al crear el usuario" }),
+        { status: 500 }
+      );
+    }
 
     console.log("✅ Nuevo usuario creado:", {
       id: newUser.id,
       name: newUser.name,
-      email: newUser.email
+      email: newUser.email,
+      role: newUser.role
     });
 
     // ========================================
-    // PASO 4: GENERAR TOKENS (Access + Refresh)
+    // PASO 4: GENERAR TOKENS
     // ========================================
     
     const payload = {
       id: newUser.id,
       email: newUser.email,
-      name: newUser.name
+      name: newUser.name,
+      role: newUser.role
     };
 
-    // Token de acceso (15 minutos)
     const accessToken = generateAccessToken(payload);
-    
-    // Token de refresco (7 días)
     const refreshToken = generateRefreshToken(payload);
 
     console.log("🔑 Tokens generados para usuario:", newUser.email);
@@ -109,21 +115,19 @@ export async function POST(req) {
     
     const cookieStore = await cookies();
     
-    // Cookie del Access Token
     cookieStore.set("accessToken", accessToken, {
       httpOnly: true,
       sameSite: "strict",
       secure: process.env.NODE_ENV === "production",
-      maxAge: 60 * 15, // 15 minutos en segundos
+      maxAge: 60 * 15,
       path: "/"
     });
 
-    // Cookie del Refresh Token
     cookieStore.set("refreshToken", refreshToken, {
       httpOnly: true,
       sameSite: "strict",
       secure: process.env.NODE_ENV === "production",
-      maxAge: 60 * 60 * 24 * 7, // 7 días en segundos
+      maxAge: 60 * 60 * 24 * 7,
       path: "/"
     });
 
@@ -140,11 +144,12 @@ export async function POST(req) {
         user: { 
           id: newUser.id, 
           email: newUser.email,
-          name: newUser.name 
+          name: newUser.name,
+          role: newUser.role
         }
       }),
       { 
-        status: 201, // 201 = Created
+        status: 201,
         headers: {
           'Content-Type': 'application/json'
         }

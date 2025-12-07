@@ -1,0 +1,133 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ====================================
+// TABLA 1: USUARIOS
+// ====================================
+model User {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(TEACHER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  exams     Exam[]
+  templates Template[]
+
+  @@map("users")
+}
+
+enum Role {
+  TEACHER  // Profesor/Docente
+  ADMIN    // Administrador
+  STUDENT  // Estudiante (para futuro)
+}
+
+// ====================================
+// TABLA 2: EXÁMENES
+// ====================================
+model Exam {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String?
+  subject     String   // Materia (ej: Matemáticas, Historia)
+  grade       String?  // Grado (ej: 5to grado, Secundaria)
+  duration    Int?     // Duración en minutos
+  totalPoints Int      @default(0)
+  status      ExamStatus @default(DRAFT)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  userId      Int
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  templateId  Int?
+  template    Template? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  questions   Question[]
+
+  @@map("exams")
+}
+
+enum ExamStatus {
+  DRAFT      // Borrador
+  PUBLISHED  // Publicado
+  ARCHIVED   // Archivado
+}
+
+// ====================================
+// TABLA 3: PLANTILLAS
+// ====================================
+model Template {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  category    String   // Categoría (ej: Quiz, Evaluación, Diagnóstico)
+  isPublic    Boolean  @default(false) // Si es pública para todos los usuarios
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  userId      Int
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exams       Exam[]
+  questions   Question[]
+
+  @@map("templates")
+}
+
+// ====================================
+// TABLA 4: PREGUNTAS
+// ====================================
+model Question {
+  id          Int      @id @default(autoincrement())
+  content     String   // Texto de la pregunta
+  type        QuestionType
+  points      Int      @default(1)
+  order       Int      @default(0) // Orden en el examen
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  examId      Int?
+  exam        Exam?     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  templateId  Int?
+  template    Template? @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  options     Option[]
+
+  @@map("questions")
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE  // Opción múltiple
+  TRUE_FALSE       // Verdadero/Falso
+  SHORT_ANSWER     // Respuesta corta
+  ESSAY            // Ensayo/Desarrollo
+}
+
+// ====================================
+// TABLA 5: OPCIONES DE RESPUESTA
+// ====================================
+model Option {
+  id         Int      @id @default(autoincrement())
+  content    String   // Texto de la opción
+  isCorrect  Boolean  @default(false)
+  order      Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  // Relaciones
+  questionId Int
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@map("options")
+}

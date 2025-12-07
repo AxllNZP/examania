@@ -30,7 +30,6 @@ export async function POST() {
     if (!decoded) {
       console.log("❌ Refresh token inválido o expirado");
       
-      // Eliminar cookies inválidas
       cookieStore.delete("accessToken");
       cookieStore.delete("refreshToken");
       
@@ -43,15 +42,14 @@ export async function POST() {
     console.log("✅ Refresh token válido para usuario:", decoded.email);
 
     // ========================================
-    // PASO 3: BUSCAR EL USUARIO ACTUALIZADO
+    // PASO 3: BUSCAR USUARIO EN BASE DE DATOS
     // ========================================
     
-    const user = findUserById(decoded.id);
+    const user = await findUserById(decoded.id);
 
     if (!user) {
-      console.log("❌ Usuario no encontrado:", decoded.id);
+      console.log("❌ Usuario no encontrado en BD:", decoded.id);
       
-      // Usuario fue eliminado
       cookieStore.delete("accessToken");
       cookieStore.delete("refreshToken");
       
@@ -68,7 +66,8 @@ export async function POST() {
     const payload = {
       id: user.id,
       email: user.email,
-      name: user.name
+      name: user.name,
+      role: user.role
     };
 
     const newAccessToken = generateAccessToken(payload);
@@ -83,7 +82,7 @@ export async function POST() {
       httpOnly: true,
       sameSite: "strict",
       secure: process.env.NODE_ENV === "production",
-      maxAge: 60 * 15, // 15 minutos
+      maxAge: 60 * 15,
       path: "/"
     });
 
@@ -100,7 +99,8 @@ export async function POST() {
         user: {
           id: user.id,
           email: user.email,
-          name: user.name
+          name: user.name,
+          role: user.role
         }
       }),
       { status: 200 }
